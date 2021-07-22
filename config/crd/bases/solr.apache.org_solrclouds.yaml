@@ -4499,6 +4499,9 @@ spec:
                       hideNodes:
                         description: Do not expose each of the Solr Node services externally. The number of services this affects could range from 1 (a headless service for ExternalDNS) to the number of Solr pods your cloud contains (individual node services for Ingress/LoadBalancer). Defaults to false.
                         type: boolean
+                      ingressTLSTerminationSecret:
+                        description: "IngressTLSTerminationSecret defines a TLS Secret to use for TLS termination of all exposed addresses in the ingress. \n This is option is only available when Method=Ingress, because ExternalDNS and LoadBalancer Services do not support TLS termination. This option is also unavailable when the SolrCloud has TLS enabled via `spec.solrTLS`, in this case the Ingress cannot terminate TLS before reaching Solr. \n When using this option, the UseExternalAddress option will be disabled, since Solr cannot be running in HTTP mode and making internal requests in HTTPS."
+                        type: string
                       method:
                         description: The way in which this SolrCloud's service(s) should be made addressable externally.
                         enum:

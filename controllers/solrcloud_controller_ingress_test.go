@@ -167,7 +167,7 @@ func TestIngressCloudReconcile(t *testing.T) {
 	g.Eventually(func() error { return testClient.Get(context.TODO(), expectedCloudRequest.NamespacedName, instance) }, timeout).Should(gomega.Succeed())
 	assert.Equal(t, "http://"+cloudCsKey.Name+"."+instance.Namespace+":4000", instance.Status.InternalCommonAddress, "Wrong internal common address in status")
 	assert.NotNil(t, instance.Status.ExternalCommonAddress, "External common address in Status should not be nil.")
-	assert.EqualValues(t, "http://"+instance.Namespace+"-"+instance.Name+"-solrcloud"+"."+testDomain+":4000", *instance.Status.ExternalCommonAddress, "Wrong external common address in status")
+	assert.EqualValues(t, "http://"+instance.Namespace+"-"+instance.Name+"-solrcloud"+"."+testDomain, *instance.Status.ExternalCommonAddress, "Wrong external common address in status")
 }
 
 func TestIngressNoNodesCloudReconcile(t *testing.T) {
@@ -295,7 +295,7 @@ func TestIngressNoNodesCloudReconcile(t *testing.T) {
 	g.Eventually(func() error { return testClient.Get(context.TODO(), expectedCloudRequest.NamespacedName, instance) }, timeout).Should(gomega.Succeed())
 	assert.Equal(t, "http://"+cloudCsKey.Name+"."+instance.Namespace+":4000", instance.Status.InternalCommonAddress, "Wrong internal common address in status")
 	assert.NotNil(t, instance.Status.ExternalCommonAddress, "External common address in Status should not be nil.")
-	assert.EqualValues(t, "http://"+instance.Namespace+"-"+instance.Name+"-solrcloud"+"."+testDomain+":4000", *instance.Status.ExternalCommonAddress, "Wrong external common address in status")
+	assert.EqualValues(t, "http://"+instance.Namespace+"-"+instance.Name+"-solrcloud"+"."+testDomain, *instance.Status.ExternalCommonAddress, "Wrong external common address in status")
 }
 
 func TestIngressNoCommonCloudReconcile(t *testing.T) {
@@ -556,7 +556,7 @@ func TestIngressUseInternalAddressCloudReconcile(t *testing.T) {
 	g.Eventually(func() error { return testClient.Get(context.TODO(), expectedCloudRequest.NamespacedName, instance) }, timeout).Should(gomega.Succeed())
 	assert.Equal(t, "http://"+cloudCsKey.Name+"."+instance.Namespace+":4000", instance.Status.InternalCommonAddress, "Wrong internal common address in status")
 	assert.NotNil(t, instance.Status.ExternalCommonAddress, "External common address in Status should not be nil.")
-	assert.EqualValues(t, "http://"+instance.Namespace+"-"+instance.Name+"-solrcloud"+"."+testDomain+":4000", *instance.Status.ExternalCommonAddress, "Wrong external common address in status")
+	assert.EqualValues(t, "http://"+instance.Namespace+"-"+instance.Name+"-solrcloud"+"."+testDomain, *instance.Status.ExternalCommonAddress, "Wrong external common address in status")
 }
 
 func TestIngressExtraDomainsCloudReconcile(t *testing.T) {
@@ -691,7 +691,7 @@ func TestIngressExtraDomainsCloudReconcile(t *testing.T) {
 	g.Eventually(func() error { return testClient.Get(context.TODO(), expectedCloudRequest.NamespacedName, instance) }, timeout).Should(gomega.Succeed())
 	assert.Equal(t, "http://"+cloudCsKey.Name+"."+instance.Namespace+":4000", instance.Status.InternalCommonAddress, "Wrong internal common address in status")
 	assert.NotNil(t, instance.Status.ExternalCommonAddress, "External common address in Status should not be nil.")
-	assert.EqualValues(t, "http://"+instance.Namespace+"-"+instance.Name+"-solrcloud"+"."+testDomain+":4000", *instance.Status.ExternalCommonAddress, "Wrong external common address in status")
+	assert.EqualValues(t, "http://"+instance.Namespace+"-"+instance.Name+"-solrcloud"+"."+testDomain, *instance.Status.ExternalCommonAddress, "Wrong external common address in status")
 }
 
 func TestIngressKubeDomainCloudReconcile(t *testing.T) {

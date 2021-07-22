@@ -428,6 +428,16 @@ type ExternalAddressability struct {
 	// Defaults to 80 if HideNodes=false and method=Ingress, otherwise this is optional.
 	// +optional
 	NodePortOverride int `json:"nodePortOverride,omitempty"`
+
+	// IngressTLSTerminationSecret defines a TLS Secret to use for TLS termination of all exposed addresses in the ingress.
+	//
+	// This is option is only available when Method=Ingress, because ExternalDNS and LoadBalancer Services do not support TLS termination.
+	// This option is also unavailable when the SolrCloud has TLS enabled via `spec.solrTLS`, in this case the Ingress cannot terminate TLS before reaching Solr.
+	//
+	// When using this option, the UseExternalAddress option will be disabled, since Solr cannot be running in HTTP mode and making internal requests in HTTPS.
+	//
+	// +optional
+	IngressTLSTerminationSecret string `json:"ingressTLSTerminationSecret,omitempty"`
 }
 
 // ExternalAddressability is a string enumeration type that enumerates
@@ -449,7 +459,7 @@ const (
 
 func (opts *ExternalAddressability) withDefaults() (changed bool) {
 	// You can't use an externalAddress for Solr Nodes if the Nodes are hidden externally
-	if opts.UseExternalAddress && opts.HideNodes {
+	if opts.UseExternalAddress && (opts.HideNodes || opts.IngressTLSTerminationSecret != "") {
 		changed = true
 		opts.UseExternalAddress = false
 	}
@@ -839,7 +849,7 @@ func (sc *SolrCloud) CommonServiceName() string {
 
 // InternalURLForCloud returns the name of the common service for the cloud
 func InternalURLForCloud(sc *SolrCloud) string {
-	return fmt.Sprintf("%s://%s-solrcloud-common.%s%s", sc.UrlScheme(), sc.Name, sc.Namespace, sc.CommonPortSuffix())
+	return fmt.Sprintf("%s://%s-solrcloud-common.%s%s", sc.UrlScheme(false), sc.Name, sc.Namespace, sc.CommonPortSuffix(false))
 }
 
 // HeadlessServiceName returns the name of the headless service for the cloud
@@ -903,10 +913,6 @@ func (sc *SolrCloud) CommonExternalPrefix() string {
 	return fmt.Sprintf("%s-%s-solrcloud", sc.Namespace, sc.Name)
 }
 
-func (sc *SolrCloud) CommonExternalUrl(domainName string) string {
-	return fmt.Sprintf("%s.%s", sc.CommonExternalPrefix(), domainName)
-}
-
 func (sc *SolrCloud) NodeIngressPrefix(nodeName string) string {
 	return fmt.Sprintf("%s-%s", sc.Namespace, nodeName)
 }
@@ -926,7 +932,7 @@ func (sc *SolrCloud) customKubeDomain() string {
 func (sc *SolrCloud) NodeHeadlessUrl(nodeName string, withPort bool) (url string) {
 	url = fmt.Sprintf("%s.%s.%s", nodeName, sc.HeadlessServiceName(), sc.Namespace) + sc.customKubeDomain()
 	if withPort {
-		url += sc.NodePortSuffix()
+		url += sc.NodePortSuffix(false)
 	}
 	return url
 }
@@ -934,17 +940,17 @@ func (sc *SolrCloud) NodeHeadlessUrl(nodeName string, withPort bool) (url string
 func (sc *SolrCloud) NodeServiceUrl(nodeName string, withPort bool) (url string) {
 	url = fmt.Sprintf("%s.%s", nodeName, sc.Namespace) + sc.customKubeDomain()
 	if withPort {
-		url += sc.NodePortSuffix()
+		url += sc.NodePortSuffix(false)
 	}
 	return url
 }
 
-func (sc *SolrCloud) CommonPortSuffix() string {
-	return sc.PortToSuffix(sc.Spec.SolrAddressability.CommonServicePort)
+func (sc *SolrCloud) CommonPortSuffix(external bool) string {
+	return sc.PortToSuffix(sc.Spec.SolrAddressability.CommonServicePort, external)
 }
 
-func (sc *SolrCloud) NodePortSuffix() string {
-	return sc.PortToSuffix(sc.NodePort())
+func (sc *SolrCloud) NodePortSuffix(external bool) string {
+	return sc.PortToSuffix(sc.NodePort(), external)
 }
 
 func (sc *SolrCloud) NodePort() int {
@@ -957,9 +963,9 @@ func (sc *SolrCloud) NodePort() int {
 	return port
 }
 
-func (sc *SolrCloud) PortToSuffix(port int) string {
+func (sc *SolrCloud) PortToSuffix(port int, external bool) string {
 	suffix := ""
-	if sc.UrlScheme() == "https" {
+	if sc.UrlScheme(external) == "https" {
 		if port != 443 {
 			suffix = ":" + strconv.Itoa(port)
 		}
@@ -984,7 +990,7 @@ func (sc *SolrCloud) InternalNodeUrl(nodeName string, withPort bool) string {
 func (sc *SolrCloud) InternalCommonUrl(withPort bool) (url string) {
 	url = fmt.Sprintf("%s.%s", sc.CommonServiceName(), sc.Namespace) + sc.customKubeDomain()
 	if withPort {
-		url += sc.CommonPortSuffix()
+		url += sc.CommonPortSuffix(false)
 	}
 	return url
 }
@@ -996,8 +1002,10 @@ func (sc *SolrCloud) ExternalNodeUrl(nodeName string, domainName string, withPor
 		url = fmt.Sprintf("%s.%s", nodeName, sc.ExternalDnsDomain(domainName))
 	}
 	// TODO: Add LoadBalancer stuff here
-	if withPort {
-		url += sc.NodePortSuffix()
+
+	if withPort && sc.Spec.SolrAddressability.External.Method != Ingress {
+		// Ingress does not require a port, since the port is whatever the ingress is listening on (80 and 443)
+		url += sc.NodePortSuffix(true)
 	}
 	return url
 }
@@ -1008,15 +1016,20 @@ func (sc *SolrCloud) ExternalCommonUrl(domainName string, withPort bool) (url st
 	} else if sc.Spec.SolrAddressability.External.Method == ExternalDNS {
 		url = fmt.Sprintf("%s.%s", sc.CommonServiceName(), sc.ExternalDnsDomain(domainName))
 	}
-	if withPort {
-		url += sc.CommonPortSuffix()
+	// TODO: Add LoadBalancer stuff here
+
+	if withPort && sc.Spec.SolrAddressability.External.Method != Ingress {
+		// Ingress does not require a port, since the port is whatever the ingress is listening on (80 and 443)
+		url += sc.CommonPortSuffix(true)
 	}
 	return url
 }
 
-func (sc *SolrCloud) UrlScheme() string {
+func (sc *SolrCloud) UrlScheme(external bool) string {
 	urlScheme := "http"
 	if sc.Spec.SolrTLS != nil {
+		urlScheme = "https"
+	} else if external && sc.Spec.SolrAddressability.External != nil && sc.Spec.SolrAddressability.External.Method == Ingress && sc.Spec.SolrAddressability.External.IngressTLSTerminationSecret != "" {
 		urlScheme = "https"
 	}
 	return urlScheme

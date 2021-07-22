@@ -79,6 +79,7 @@ addressability:
     # hideNodes: false
     # hideCommon: false
     # nodePortOverride: null
+    # ingressTLSTerminationSecret: ""
 
 # Specify how rolling updates should be managed for the Solr StatefulSet
 # https://apache.github.io/solr-operator/docs/solr-cloud/solr-cloud-crd.html#update-strategy
