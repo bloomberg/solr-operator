@@ -208,7 +208,7 @@ func createTLSOptions(tlsSecretName string, keystorePassKey string, restartOnTLS
 		},
 		PKCS12Secret: &corev1.SecretKeySelector{
 			LocalObjectReference: corev1.LocalObjectReference{Name: tlsSecretName},
-			Key:                  util.Pkcs12KeystoreFile,
+			Key:                  solr.DefaultPkcs12KeystoreFile,
 		},
 		RestartOnTLSSecretUpdate: restartOnTLSSecretUpdate,
 	}

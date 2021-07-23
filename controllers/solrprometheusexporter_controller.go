@@ -177,7 +177,7 @@ func (r *SolrPrometheusExporterReconciler) Reconcile(req ctrl.Request) (ctrl.Res
 
 	// Make sure the TLS config is in order
 	var tlsClientOptions *util.TLSClientOptions = nil
-	if prometheusExporter.Spec.SolrReference.SolrTLS != nil {
+	if prometheusExporter.Spec.SolrReference.SolrTLS != nil && prometheusExporter.Spec.SolrReference.SolrTLS.PKCS12Secret != nil {
 		requeueOrNot := reconcile.Result{}
 		ctx := context.TODO()
 		foundTLSSecret := &corev1.Secret{}
@@ -216,6 +216,11 @@ func (r *SolrPrometheusExporterReconciler) Reconcile(req ctrl.Request) (ctrl.Res
 				}
 			}
 		}
+	} else if prometheusExporter.Spec.SolrReference.SolrTLS != nil && prometheusExporter.Spec.SolrReference.SolrTLS.MountedTLSDir != nil {
+		tlsClientOptions = &util.TLSClientOptions{}
+		tlsClientOptions.TLSOptions = prometheusExporter.Spec.SolrReference.SolrTLS
+		// TODO: How to get this from the SolrCloud reference?
+		tlsClientOptions.BusyBoxImage = &solrv1beta1.ContainerImage{Repository: solrv1beta1.DefaultBusyBoxImageRepo, Tag: solrv1beta1.DefaultBusyBoxImageVersion}
 	}
 
 	basicAuthMd5 := ""
@@ -380,7 +385,7 @@ func (r *SolrPrometheusExporterReconciler) indexAndWatchForTLSSecret(mgr ctrl.Ma
 	if err := mgr.GetFieldIndexer().IndexField(context.TODO(), &solrv1beta1.SolrPrometheusExporter{}, tlsSecretField, func(rawObj runtime.Object) []string {
 		// grab the SolrCloud object, extract the referenced TLS secret...
 		exporter := rawObj.(*solrv1beta1.SolrPrometheusExporter)
-		if exporter.Spec.SolrReference.SolrTLS == nil {
+		if exporter.Spec.SolrReference.SolrTLS == nil || exporter.Spec.SolrReference.SolrTLS.PKCS12Secret == nil {
 			return nil
 		}
 		// ...and if so, return it

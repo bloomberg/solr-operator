@@ -55,6 +55,10 @@ const (
 	ZookeeperTechnologyLabel = "zookeeper"
 
 	DefaultBasicAuthUsername = "k8s-oper"
+
+	DefaultPkcs12KeystoreFile   = "keystore.p12"
+	DefaultPkcs12TruststoreFile = "truststore.p12"
+	DefaultKeystorePasswordFile = "keystore-password"
 )
 
 // SolrCloudSpec defines the desired state of SolrCloud
@@ -1074,12 +1078,43 @@ const (
 	Need ClientAuthType = "Need"
 )
 
-type SolrTLSOptions struct {
-	// TLS Secret containing a pkcs12 keystore
-	PKCS12Secret *corev1.SecretKeySelector `json:"pkcs12Secret"`
+type MountedTLSDirectory struct {
+	// The path on the main Solr container where the TLS files are mounted by some external agent or CSI Driver
+	Path string `json:"path"`
 
-	// Secret containing the key store password; this field is required as most JVMs do not support pkcs12 keystores without a password
-	KeyStorePasswordSecret *corev1.SecretKeySelector `json:"keyStorePasswordSecret"`
+	// Override the name of the keystore file; defaults to keystore.p12
+	// +optional
+	KeystoreFile string `json:"keystoreFile,omitempty"`
+
+	// Override the name of the keystore password file; defaults to keystore-password
+	// +optional
+	KeystorePasswordFile string `json:"keystorePasswordFile,omitempty"`
+
+	// Override the name of the truststore file; defaults truststore.p12
+	// To use the same file as the keystore, override this variable with the name of your keystore file
+	// +optional
+	TruststoreFile string `json:"truststoreFile,omitempty"`
+
+	// Override the name of the truststore password file; defaults to the same value as the KeystorePasswordFile
+	// +optional
+	TruststorePasswordFile string `json:"truststorePasswordFile,omitempty"`
+}
+
+func (dir *MountedTLSDirectory) mountedTLSPath(fileName string, defaultName string) string {
+	if fileName == "" {
+		fileName = defaultName
+	}
+	return fmt.Sprintf("%s/%s", dir.Path, fileName)
+}
+
+type SolrTLSOptions struct {
+	// TLS Secret containing a pkcs12 keystore; required unless mountedTLSDir is used
+	// +optional
+	PKCS12Secret *corev1.SecretKeySelector `json:"pkcs12Secret,omitempty"`
+
+	// Secret containing the key store password; this field is required unless mountedTLSDir is used, as most JVMs do not support pkcs12 keystores without a password
+	// +optional
+	KeyStorePasswordSecret *corev1.SecretKeySelector `json:"keyStorePasswordSecret,omitempty"`
 
 	// TLS Secret containing a pkcs12 truststore; if not provided, then the keystore and password are used for the truststore
 	// The specified key is used as the truststore file name when mounted into Solr pods
@@ -1106,6 +1141,47 @@ type SolrTLSOptions struct {
 	// Opt-in flag to restart Solr pods after TLS secret updates, such as if the cert is renewed; default is false.
 	// +optional
 	RestartOnTLSSecretUpdate bool `json:"restartOnTLSSecretUpdate,omitempty"`
+
+	// Used to specify a path where the keystore, truststore, and password files are mounted by an external agent or CSI driver.
+	// This option is typically used with `spec.updateStrategy.restartSchedule` to restart Solr pods before the mounted TLS cert expires.
+	// +optional
+	MountedTLSDir *MountedTLSDirectory `json:"mountedTLSDir,omitempty"`
+}
+
+func (tls *SolrTLSOptions) MountedTLSKeystorePath() string {
+	path := ""
+	if tls.MountedTLSDir != nil {
+		path = tls.MountedTLSDir.mountedTLSPath(tls.MountedTLSDir.KeystoreFile, DefaultPkcs12KeystoreFile)
+	}
+	return path
+}
+
+func (tls *SolrTLSOptions) MountedTLSKeystorePasswordPath() string {
+	path := ""
+	if tls.MountedTLSDir != nil {
+		path = tls.MountedTLSDir.mountedTLSPath(tls.MountedTLSDir.KeystorePasswordFile, DefaultKeystorePasswordFile)
+	}
+	return path
+}
+
+func (tls *SolrTLSOptions) MountedTLSTruststorePath() string {
+	path := ""
+	if tls.MountedTLSDir != nil {
+		path = tls.MountedTLSDir.mountedTLSPath(tls.MountedTLSDir.TruststoreFile, DefaultPkcs12TruststoreFile)
+	}
+	return path
+}
+
+func (tls *SolrTLSOptions) MountedTLSTruststorePasswordPath() string {
+	path := ""
+	if tls.MountedTLSDir != nil {
+		if tls.MountedTLSDir.TruststorePasswordFile != "" {
+			path = tls.MountedTLSDir.mountedTLSPath(tls.MountedTLSDir.TruststorePasswordFile, "")
+		} else {
+			path = tls.MountedTLSKeystorePasswordPath()
+		}
+	}
+	return path
 }
 
 // +kubebuilder:validation:Enum=Basic
@@ -1137,7 +1213,8 @@ type SolrSecurityOptions struct {
 
 	// Flag to indicate if the configured HTTP endpoint(s) used for the probes require authentication; defaults
 	// to false. If you set to true, then probes will use a local command on the main container to hit the secured
-	// endpoints with credentials sourced from an env var instead of HTTP directly.
+	// endpoints with credentials sourced from an env var instead of HTTP directly. This property is effectively ignored
+	// and the operator will always configure a secure probe if `spec.solrTLS.clientAuth` is either `Want` or `Need`.
 	// +optional
 	ProbesRequireAuth bool `json:"probesRequireAuth,omitempty"`
 }

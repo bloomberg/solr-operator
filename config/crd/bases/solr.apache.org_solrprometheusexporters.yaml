@@ -3445,7 +3445,7 @@ spec:
                         - Need
                         type: string
                       keyStorePasswordSecret:
-                        description: Secret containing the key store password; this field is required as most JVMs do not support pkcs12 keystores without a password
+                        description: Secret containing the key store password; this field is required unless mountedTLSDir is used, as most JVMs do not support pkcs12 keystores without a password
                         properties:
                           key:
                             description: The key of the secret to select from.  Must be a valid secret key.
@@ -3459,8 +3459,29 @@ spec:
                         required:
                         - key
                         type: object
+                      mountedTLSDir:
+                        description: Used to specify a path where the keystore, truststore, and password files are mounted by an external agent or CSI driver. This option is typically used with `spec.updateStrategy.restartSchedule` to restart Solr pods before the mounted TLS cert expires.
+                        properties:
+                          keystoreFile:
+                            description: Override the name of the keystore file; defaults to keystore.p12
+                            type: string
+                          keystorePasswordFile:
+                            description: Override the name of the keystore password file; defaults to keystore-password
+                            type: string
+                          path:
+                            description: The path on the main Solr container where the TLS files are mounted by some external agent or CSI Driver
+                            type: string
+                          truststoreFile:
+                            description: Override the name of the truststore file; defaults truststore.p12 To use the same file as the keystore, override this variable with the name of your keystore file
+                            type: string
+                          truststorePasswordFile:
+                            description: Override the name of the truststore password file; defaults to the same value as the KeystorePasswordFile
+                            type: string
+                        required:
+                        - path
+                        type: object
                       pkcs12Secret:
-                        description: TLS Secret containing a pkcs12 keystore
+                        description: TLS Secret containing a pkcs12 keystore; required unless mountedTLSDir is used
                         properties:
                           key:
                             description: The key of the secret to select from.  Must be a valid secret key.
@@ -3510,9 +3531,6 @@ spec:
                       verifyClientHostname:
                         description: Verify client's hostname during SSL handshake
                         type: boolean
-                    required:
-                    - keyStorePasswordSecret
-                    - pkcs12Secret
                     type: object
                   standalone:
                     description: Reference of a standalone solr instance

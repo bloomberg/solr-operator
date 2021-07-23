@@ -5685,7 +5685,7 @@ spec:
                     description: "Secret (kubernetes.io/basic-auth) containing credentials the operator should use for API requests to secure Solr pods. If you provide this secret, then the operator assumes you've also configured your own security.json file and uploaded it to Solr. If you change the password for this user using the Solr security API, then you *must* update the secret with the new password or the operator will be  locked out of Solr and API requests will fail, ultimately causing a CrashBackoffLoop for all pods if probe endpoints are secured (see 'probesRequireAuth' setting). \n If you don't supply this secret, then the operator creates a kubernetes.io/basic-auth secret containing the password for the \"k8s-oper\" user. All API requests from the operator are made as the \"k8s-oper\" user, which is configured with read-only access to a minimal set of endpoints. In addition, the operator bootstraps a default security.json file and credentials for two additional users: admin and solr. The 'solr' user has basic read access to Solr resources. Once the security.json is bootstrapped, the operator will not update it! You're expected to use the 'admin' user to access the Security API to make further changes. It's strictly a bootstrapping operation."
                     type: string
                   probesRequireAuth:
-                    description: Flag to indicate if the configured HTTP endpoint(s) used for the probes require authentication; defaults to false. If you set to true, then probes will use a local command on the main container to hit the secured endpoints with credentials sourced from an env var instead of HTTP directly.
+                    description: Flag to indicate if the configured HTTP endpoint(s) used for the probes require authentication; defaults to false. If you set to true, then probes will use a local command on the main container to hit the secured endpoints with credentials sourced from an env var instead of HTTP directly. This property is effectively ignored and the operator will always configure a secure probe if `spec.solrTLS.clientAuth` is either `Want` or `Need`.
                     type: boolean
                 type: object
               solrTLS:
@@ -5703,7 +5703,7 @@ spec:
                     - Need
                     type: string
                   keyStorePasswordSecret:
-                    description: Secret containing the key store password; this field is required as most JVMs do not support pkcs12 keystores without a password
+                    description: Secret containing the key store password; this field is required unless mountedTLSDir is used, as most JVMs do not support pkcs12 keystores without a password
                     properties:
                       key:
                         description: The key of the secret to select from.  Must be a valid secret key.
@@ -5717,8 +5717,29 @@ spec:
                     required:
                     - key
                     type: object
+                  mountedTLSDir:
+                    description: Used to specify a path where the keystore, truststore, and password files are mounted by an external agent or CSI driver. This option is typically used with `spec.updateStrategy.restartSchedule` to restart Solr pods before the mounted TLS cert expires.
+                    properties:
+                      keystoreFile:
+                        description: Override the name of the keystore file; defaults to keystore.p12
+                        type: string
+                      keystorePasswordFile:
+                        description: Override the name of the keystore password file; defaults to keystore-password
+                        type: string
+                      path:
+                        description: The path on the main Solr container where the TLS files are mounted by some external agent or CSI Driver
+                        type: string
+                      truststoreFile:
+                        description: Override the name of the truststore file; defaults truststore.p12 To use the same file as the keystore, override this variable with the name of your keystore file
+                        type: string
+                      truststorePasswordFile:
+                        description: Override the name of the truststore password file; defaults to the same value as the KeystorePasswordFile
+                        type: string
+                    required:
+                    - path
+                    type: object
                   pkcs12Secret:
-                    description: TLS Secret containing a pkcs12 keystore
+                    description: TLS Secret containing a pkcs12 keystore; required unless mountedTLSDir is used
                     properties:
                       key:
                         description: The key of the secret to select from.  Must be a valid secret key.
@@ -5768,9 +5789,6 @@ spec:
                   verifyClientHostname:
                     description: Verify client's hostname during SSL handshake
                     type: boolean
-                required:
-                - keyStorePasswordSecret
-                - pkcs12Secret
                 type: object
               updateStrategy:
                 description: Define how Solr rolling updates are executed.
@@ -10078,7 +10096,7 @@ spec:
                         - Need
                         type: string
                       keyStorePasswordSecret:
-                        description: Secret containing the key store password; this field is required as most JVMs do not support pkcs12 keystores without a password
+                        description: Secret containing the key store password; this field is required unless mountedTLSDir is used, as most JVMs do not support pkcs12 keystores without a password
                         properties:
                           key:
                             description: The key of the secret to select from.  Must be a valid secret key.
@@ -10092,8 +10110,29 @@ spec:
                         required:
                         - key
                         type: object
+                      mountedTLSDir:
+                        description: Used to specify a path where the keystore, truststore, and password files are mounted by an external agent or CSI driver. This option is typically used with `spec.updateStrategy.restartSchedule` to restart Solr pods before the mounted TLS cert expires.
+                        properties:
+                          keystoreFile:
+                            description: Override the name of the keystore file; defaults to keystore.p12
+                            type: string
+                          keystorePasswordFile:
+                            description: Override the name of the keystore password file; defaults to keystore-password
+                            type: string
+                          path:
+                            description: The path on the main Solr container where the TLS files are mounted by some external agent or CSI Driver
+                            type: string
+                          truststoreFile:
+                            description: Override the name of the truststore file; defaults truststore.p12 To use the same file as the keystore, override this variable with the name of your keystore file
+                            type: string
+                          truststorePasswordFile:
+                            description: Override the name of the truststore password file; defaults to the same value as the KeystorePasswordFile
+                            type: string
+                        required:
+                        - path
+                        type: object
                       pkcs12Secret:
-                        description: TLS Secret containing a pkcs12 keystore
+                        description: TLS Secret containing a pkcs12 keystore; required unless mountedTLSDir is used
                         properties:
                           key:
                             description: The key of the secret to select from.  Must be a valid secret key.
@@ -10143,9 +10182,6 @@ spec:
                       verifyClientHostname:
                         description: Verify client's hostname during SSL handshake
                         type: boolean
-                    required:
-                    - keyStorePasswordSecret
-                    - pkcs12Secret
                     type: object
                   standalone:
                     description: Reference of a standalone solr instance

@@ -18,6 +18,7 @@
 package util
 
 import (
+	"fmt"
 	solr "github.com/apache/solr-operator/api/v1beta1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -51,6 +52,7 @@ type TLSClientOptions struct {
 	TLSOptions               *solr.SolrTLSOptions
 	NeedsPkcs12InitContainer bool
 	TLSCertMd5               string
+	BusyBoxImage             *solr.ContainerImage
 }
 
 // GenerateSolrPrometheusExporterDeployment returns a new appsv1.Deployment pointer generated for the SolrCloud Prometheus Exporter instance
@@ -169,11 +171,48 @@ func GenerateSolrPrometheusExporterDeployment(solrPrometheusExporter *solr.SolrP
 		}
 	}
 
+	var createTLSWrapperScriptInitContainer *corev1.Container
 	if tls != nil {
 		envVars = append(envVars, TLSEnvVars(tls.TLSOptions, tls.NeedsPkcs12InitContainer)...)
-		volumeMounts = append(volumeMounts, tlsVolumeMounts(tls.TLSOptions, tls.NeedsPkcs12InitContainer)...)
-		solrVolumes = append(solrVolumes, tlsVolumes(tls.TLSOptions, tls.NeedsPkcs12InitContainer)...)
 		allJavaOpts = append(allJavaOpts, tlsJavaOpts(tls.TLSOptions)...)
+		if tls.TLSOptions.PKCS12Secret != nil {
+			volumeMounts = append(volumeMounts, tlsVolumeMounts(tls.TLSOptions, tls.NeedsPkcs12InitContainer)...)
+			solrVolumes = append(solrVolumes, tlsVolumes(tls.TLSOptions, tls.NeedsPkcs12InitContainer)...)
+		} else if tls.TLSOptions.MountedTLSDir != nil {
+			volName := "tls-wrapper-script"
+			mountPath := "/usr/local/solr-exporter-tls"
+			wrapperScript := mountPath + "/launch-exporter-with-tls.sh"
+
+			// the Prom exporter needs the keystore & truststore passwords in a Java system property, but the password
+			// is stored in a file when using the mounted TLS dir approach, so we use a wrapper script around the main
+			// container entry point to add these properties to JAVA_OPTS at runtime
+			solrVolumes = append(solrVolumes, corev1.Volume{Name: volName, VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}})
+			volumeMounts = append(volumeMounts, corev1.VolumeMount{Name: volName, MountPath: mountPath})
+
+			/*
+				  Create a wrapper script like:
+
+					#!/bin/bash
+					ksp=$(cat $MOUNTED_TLS_DIR/keystore-password)
+					tsp=$(cat $MOUNTED_TLS_DIR/keystore-password)
+					JAVA_OPTS="${JAVA_OPTS} -Djavax.net.ssl.keyStorePassword=${ksp} -Djavax.net.ssl.trustStorePassword=${tsp}"
+					/opt/solr/contrib/prometheus-exporter/bin/solr-exporter $@
+
+			*/
+			writeWrapperScript := fmt.Sprintf("cat << EOF > %s\n#!/bin/bash\nksp=\\$(cat %s)\ntsp=\\$(cat %s)\nJAVA_OPTS=\"\\${JAVA_OPTS} -Djavax.net.ssl.keyStorePassword=\\${ksp} -Djavax.net.ssl.trustStorePassword=\\${tsp}\"\n%s \\$@\nEOF\nchmod +x %s",
+				wrapperScript, tls.TLSOptions.MountedTLSKeystorePasswordPath(), tls.TLSOptions.MountedTLSTruststorePasswordPath(), entrypoint, wrapperScript)
+
+			createTLSWrapperScriptInitContainer = &corev1.Container{
+				Name:            "create-tls-wrapper-script",
+				Image:           tls.BusyBoxImage.ToImageName(),
+				ImagePullPolicy: tls.BusyBoxImage.PullPolicy,
+				Command:         []string{"sh", "-c", writeWrapperScript},
+				VolumeMounts:    []corev1.VolumeMount{{Name: volName, MountPath: mountPath}},
+			}
+
+			// update the main container entrypoint for the main container to be our tls wrapper script
+			entrypoint = wrapperScript
+		}
 	}
 
 	// basic auth enabled?
@@ -237,6 +276,10 @@ func GenerateSolrPrometheusExporterDeployment(solrPrometheusExporter *solr.SolrP
 		pkcs12InitContainer := generatePkcs12InitContainer(tls.TLSOptions,
 			solrPrometheusExporter.Spec.Image.ToImageName(), solrPrometheusExporter.Spec.Image.PullPolicy)
 		initContainers = append(initContainers, pkcs12InitContainer)
+	}
+
+	if createTLSWrapperScriptInitContainer != nil {
+		initContainers = append(initContainers, *createTLSWrapperScriptInitContainer)
 	}
 
 	// track the MD5 of the custom exporter config in the pod spec annotations,
@@ -441,13 +484,17 @@ func CreateMetricsIngressRule(solrPrometheusExporter *solr.SolrPrometheusExporte
 func tlsJavaOpts(tlsOptions *solr.SolrTLSOptions) []string {
 	javaOpts := []string{
 		"-Djavax.net.ssl.keyStore=$(SOLR_SSL_KEY_STORE)",
-		"-Djavax.net.ssl.keyStorePassword=$(SOLR_SSL_KEY_STORE_PASSWORD)",
 		"-Djavax.net.ssl.trustStore=$(SOLR_SSL_TRUST_STORE)",
-		"-Djavax.net.ssl.trustStorePassword=$(SOLR_SSL_TRUST_STORE_PASSWORD)",
 		"-Djavax.net.ssl.keyStoreType=PKCS12",
 		"-Djavax.net.ssl.trustStoreType=PKCS12",
 		"-Dsolr.ssl.checkPeerName=$(SOLR_SSL_CHECK_PEER_NAME)",
 	}
+
+	if tlsOptions.PKCS12Secret != nil {
+		// the password is available from env vars set from a secret
+		javaOpts = append(javaOpts, "-Djavax.net.ssl.keyStorePassword=$(SOLR_SSL_KEY_STORE_PASSWORD)")
+		javaOpts = append(javaOpts, "-Djavax.net.ssl.trustStorePassword=$(SOLR_SSL_TRUST_STORE_PASSWORD)")
+	} // else if mountedTLSDir != nil, the password is in a file and needs to be passed differently
 
 	if tlsOptions.VerifyClientHostname {
 		javaOpts = append(javaOpts, "-Dsolr.jetty.ssl.verifyClientHostName=HTTPS")

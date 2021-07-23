@@ -367,7 +367,7 @@ func (r *SolrCloudReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	tlsCertMd5 := ""
 	needsPkcs12InitContainer := false // flag if the StatefulSet needs an additional initCont to create PKCS12 keystore
 	// don't start reconciling TLS until we have ZK connectivity, avoids TLS code having to check for ZK
-	if !blockReconciliationOfStatefulSet && instance.Spec.SolrTLS != nil {
+	if !blockReconciliationOfStatefulSet && instance.Spec.SolrTLS != nil && instance.Spec.SolrTLS.PKCS12Secret != nil {
 		foundTLSSecret, err := r.verifyTLSSecretConfig(instance.Spec.SolrTLS.PKCS12Secret.Name, instance.Namespace, instance.Spec.SolrTLS.KeyStorePasswordSecret)
 		if err != nil {
 			return requeueOrNot, err
@@ -979,7 +979,7 @@ func (r *SolrCloudReconciler) indexAndWatchForTLSSecret(mgr ctrl.Manager, ctrlBu
 	if err := mgr.GetFieldIndexer().IndexField(context.TODO(), &solr.SolrCloud{}, ".spec.solrTLS.pkcs12Secret", func(rawObj runtime.Object) []string {
 		// grab the SolrCloud object, extract the used configMap...
 		solrCloud := rawObj.(*solr.SolrCloud)
-		if solrCloud.Spec.SolrTLS == nil {
+		if solrCloud.Spec.SolrTLS == nil || solrCloud.Spec.SolrTLS.PKCS12Secret == nil {
 			return nil
 		}
 		// ...and if so, return it
