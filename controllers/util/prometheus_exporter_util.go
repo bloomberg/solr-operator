@@ -303,6 +303,7 @@ func GenerateSolrPrometheusExporterDeployment(solrPrometheusExporter *solr.SolrP
 	deployment.Spec.Template.Spec.ImagePullSecrets = imagePullSecrets
 
 	if nil != customPodOptions {
+		metricsContainer := &deployment.Spec.Template.Spec.Containers[0]
 		if customPodOptions.ServiceAccountName != "" {
 			deployment.Spec.Template.Spec.ServiceAccountName = customPodOptions.ServiceAccountName
 		}
@@ -311,12 +312,8 @@ func GenerateSolrPrometheusExporterDeployment(solrPrometheusExporter *solr.SolrP
 			deployment.Spec.Template.Spec.Affinity = customPodOptions.Affinity
 		}
 
-		if customPodOptions.Resources.Requests != nil {
-			deployment.Spec.Template.Spec.Containers[0].Resources.Requests = customPodOptions.Resources.Requests
-		}
-
-		if customPodOptions.Resources.Limits != nil {
-			deployment.Spec.Template.Spec.Containers[0].Resources.Limits = customPodOptions.Resources.Limits
+		if customPodOptions.Resources.Limits != nil || customPodOptions.Resources.Requests != nil {
+			metricsContainer.Resources = customPodOptions.Resources
 		}
 
 		if customPodOptions.PodSecurityContext != nil {
@@ -337,6 +334,22 @@ func GenerateSolrPrometheusExporterDeployment(solrPrometheusExporter *solr.SolrP
 
 		if customPodOptions.TerminationGracePeriodSeconds != nil {
 			deployment.Spec.Template.Spec.TerminationGracePeriodSeconds = customPodOptions.TerminationGracePeriodSeconds
+		}
+
+		if customPodOptions.ReadinessProbe != nil {
+			// Default Prometheus Exporter container does not contain a readinessProbe, so copy the livenessProbe
+			baseProbe := metricsContainer.LivenessProbe.DeepCopy()
+			metricsContainer.ReadinessProbe = customizeProbe(baseProbe, *customPodOptions.ReadinessProbe)
+		}
+
+		if customPodOptions.StartupProbe != nil {
+			// Default Prometheus Exporter container does not contain a startupProbe, so copy the livenessProbe
+			baseProbe := metricsContainer.LivenessProbe.DeepCopy()
+			metricsContainer.StartupProbe = customizeProbe(baseProbe, *customPodOptions.StartupProbe)
+		}
+
+		if customPodOptions.LivenessProbe != nil {
+			metricsContainer.LivenessProbe = customizeProbe(metricsContainer.LivenessProbe, *customPodOptions.LivenessProbe)
 		}
 	}
 

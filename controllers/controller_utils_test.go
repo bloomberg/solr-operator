@@ -23,7 +23,6 @@ import (
 	"github.com/apache/solr-operator/controllers/util"
 	zkv1beta1 "github.com/pravega/zookeeper-operator/pkg/apis/zookeeper/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -392,11 +391,11 @@ func testGenericPodEnvVariables(t *testing.T, expectedEnvVars map[string]string,
 }
 
 func testPodTolerations(t *testing.T, expectedTolerations []corev1.Toleration, foundTolerations []corev1.Toleration) {
-	assert.True(t, reflect.DeepEqual(expectedTolerations, foundTolerations), "Expected tolerations and found tolerations don't match")
+	assert.EqualValues(t, expectedTolerations, foundTolerations, "Expected tolerations and found tolerations don't match")
 }
 
-func testPodProbe(t *testing.T, expectedProbe *corev1.Probe, foundProbe *corev1.Probe) {
-	assert.True(t, reflect.DeepEqual(expectedProbe, foundProbe), "Expected probe and found probe don't match")
+func testPodProbe(t *testing.T, expectedProbe *corev1.Probe, foundProbe *corev1.Probe, probeType string) {
+	assert.EqualValuesf(t, expectedProbe, foundProbe, "Incorrect default container %s probe", probeType)
 }
 
 func testMapsEqual(t *testing.T, mapName string, expected map[string]string, found map[string]string) {

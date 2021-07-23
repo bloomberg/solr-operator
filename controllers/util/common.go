@@ -132,6 +132,35 @@ func IsPVCOrphan(pvcName string, replicas int32) bool {
 	return int32(ordinal) >= replicas
 }
 
+// customizeProbe builds the probe logic used for pod liveness, readiness, startup checks
+func customizeProbe(initialProbe *corev1.Probe, customProbe corev1.Probe) *corev1.Probe {
+	if customProbe.InitialDelaySeconds != 0 {
+		initialProbe.InitialDelaySeconds = customProbe.InitialDelaySeconds
+	}
+
+	if customProbe.TimeoutSeconds != 0 {
+		initialProbe.TimeoutSeconds = customProbe.TimeoutSeconds
+	}
+
+	if customProbe.SuccessThreshold != 0 {
+		initialProbe.SuccessThreshold = customProbe.SuccessThreshold
+	}
+
+	if customProbe.FailureThreshold != 0 {
+		initialProbe.FailureThreshold = customProbe.FailureThreshold
+	}
+
+	if customProbe.PeriodSeconds != 0 {
+		initialProbe.PeriodSeconds = customProbe.PeriodSeconds
+	}
+
+	if customProbe.Handler.Exec != nil || customProbe.Handler.HTTPGet != nil || customProbe.Handler.TCPSocket != nil {
+		initialProbe.Handler = customProbe.Handler
+	}
+
+	return initialProbe
+}
+
 // CopyConfigMapFields copies the owned fields from one ConfigMap to another
 func CopyConfigMapFields(from, to *corev1.ConfigMap, logger logr.Logger) bool {
 	logger = logger.WithValues("kind", "configMap")

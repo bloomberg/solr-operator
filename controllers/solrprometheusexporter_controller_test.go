@@ -29,6 +29,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -65,6 +66,8 @@ func TestMetricsReconcileWithoutExporterConfig(t *testing.T) {
 					InitContainers:                extraContainers1,
 					ImagePullSecrets:              testAdditionalImagePullSecrets,
 					TerminationGracePeriodSeconds: &testTerminationGracePeriodSeconds,
+					LivenessProbe:                 testProbeLivenessNonDefaults,
+					ReadinessProbe:                testProbeReadinessNonDefaults,
 				},
 			},
 			ExporterEntrypoint: "/test/entry-point",
@@ -132,6 +135,11 @@ func TestMetricsReconcileWithoutExporterConfig(t *testing.T) {
 	assert.ElementsMatch(t, append(testAdditionalImagePullSecrets, corev1.LocalObjectReference{Name: testImagePullSecretName}), deployment.Spec.Template.Spec.ImagePullSecrets, "Incorrect imagePullSecrets")
 	assert.EqualValues(t, &testTerminationGracePeriodSeconds, deployment.Spec.Template.Spec.TerminationGracePeriodSeconds, "Incorrect terminationGracePeriodSeconds")
 
+	testPodProbe(t, testProbeLivenessNonDefaults, deployment.Spec.Template.Spec.Containers[0].LivenessProbe, "liveness")
+	testPodProbe(t, testProbeReadinessNonDefaults, deployment.Spec.Template.Spec.Containers[0].ReadinessProbe, "readiness")
+	assert.Nilf(t, deployment.Spec.Template.Spec.Containers[0].StartupProbe, "%s probe should be nil since it was not specified", "startup")
+
+	// Check the Service
 	service := expectService(t, g, requests, expectedMetricsRequest, metricsSKey, deployment.Spec.Template.Labels)
 	assert.Equal(t, "true", service.Annotations["prometheus.io/scrape"], "Metrics Service Prometheus scraping is not enabled.")
 	assert.EqualValues(t, "solr-metrics", service.Spec.Ports[0].Name, "Wrong port name on common Service")
@@ -151,6 +159,7 @@ func TestMetricsReconcileWithExporterConfig(t *testing.T) {
 					Tolerations:       testTolerationsPromExporter,
 					NodeSelector:      testNodeSelectors,
 					PriorityClassName: testPriorityClass,
+					StartupProbe:      testProbeStartup,
 				},
 				DeploymentOptions: &solr.DeploymentOptions{
 					Annotations: testDeploymentAnnotations,
@@ -228,6 +237,24 @@ func TestMetricsReconcileWithExporterConfig(t *testing.T) {
 	assert.Equal(t, extraVolumes[0].Name, deployment.Spec.Template.Spec.Volumes[1].Name, "Additional Volume from podOptions not loaded into pod properly.")
 	assert.Equal(t, extraVolumes[0].Source, deployment.Spec.Template.Spec.Volumes[1].VolumeSource, "Additional Volume from podOptions not loaded into pod properly.")
 
+	testPodProbe(t, &corev1.Probe{
+		Handler: corev1.Handler{
+			HTTPGet: &corev1.HTTPGetAction{
+				Scheme: corev1.URISchemeHTTP,
+				Path:   "/metrics",
+				Port:   intstr.FromInt(util.SolrMetricsPort),
+			},
+		},
+		InitialDelaySeconds: 20,
+		TimeoutSeconds:      1,
+		PeriodSeconds:       10,
+		SuccessThreshold:    1,
+		FailureThreshold:    3,
+	}, deployment.Spec.Template.Spec.Containers[0].LivenessProbe, "liveness")
+	testPodProbe(t, testProbeStartup, deployment.Spec.Template.Spec.Containers[0].StartupProbe, "startup")
+	assert.Nilf(t, deployment.Spec.Template.Spec.Containers[0].ReadinessProbe, "%s probe should be nil since it was not specified", "readiness")
+
+	// Check the Service
 	expectedServiceLabels := util.MergeLabelsOrAnnotations(instance.SharedLabelsWith(instance.Labels), map[string]string{"service-type": "metrics"})
 	expectedServiceAnnotations := map[string]string{"prometheus.io/path": "/metrics", "prometheus.io/port": "80", "prometheus.io/scheme": "http", "prometheus.io/scrape": "true"}
 	service := expectService(t, g, requests, expectedMetricsRequest, metricsSKey, expectedDeploymentLabels)

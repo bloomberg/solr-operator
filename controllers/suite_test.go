@@ -51,6 +51,14 @@ var additionalLables = map[string]string{
 }
 
 func TestMain(m *testing.M) {
+	// TODO: We can probably remove this once we upgrade our minimum supported version of Kubernetes
+	customApiServerFlags := []string{
+		"--feature-gates=StartupProbe=true",
+	}
+
+	apiServerFlags := append([]string(nil), envtest.DefaultKubeAPIServerFlags...)
+	apiServerFlags = append(apiServerFlags, customApiServerFlags...)
+
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 	t := &envtest.Environment{
 		CRDDirectoryPaths: []string{
@@ -58,6 +66,7 @@ func TestMain(m *testing.M) {
 			filepath.Join("..", "config", "dependencies"),
 		},
 		AttachControlPlaneOutput: false, // set to true to get more logging from the control plane
+		KubeAPIServerFlags:       apiServerFlags,
 	}
 	solrv1beta1.AddToScheme(scheme.Scheme)
 	zkOp.AddToScheme(scheme.Scheme)

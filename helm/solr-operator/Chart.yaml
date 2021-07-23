@@ -98,6 +98,13 @@ annotations:
           url: https://github.com/apache/solr-operator/issues/294
         - name: Github PR
           url: https://github.com/apache/solr-operator/pull/295
+    - kind: added
+      description: Ability to customize probes for PrometheusExporter
+      links:
+        - name: Github Issue
+          url: https://github.com/apache/solr-operator/issues/282
+        - name: Github PR
+          url: https://github.com/apache/solr-operator/pull/297
   artifacthub.io/images: |
     - name: solr-operator
       image: apache/solr-operator:v0.4.0-prerelease
